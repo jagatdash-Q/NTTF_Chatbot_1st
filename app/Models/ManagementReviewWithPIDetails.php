@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ManagementReviewWithPIDetails extends Model
+{
+    use HasFactory;
+    protected $fillable = [
+        'meeting_id',
+        'activity',
+        'action_by',
+        'target_date'
+    ];
+
+    public function entry()
+    {
+        return $this->belongsTo(ManagementReviewWithPI::class,  'meeting_id', 'id',);
+    }
+}

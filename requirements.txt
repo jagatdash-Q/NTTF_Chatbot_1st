@@ -1,0 +1,9 @@
+SQLAlchemy
+python-dotenv
+pydantic
+pydantic-settings
+pandas
+pytest
+PyYAML
+pymysql
+sqlalchemy-utils

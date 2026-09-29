@@ -1,0 +1,271 @@
+# Optional schema enrichment: descriptions/aliases for columns whose name
+# does not already say what users call them. This is NOT a parameter/table
+# mapping - it only adds vocabulary that
+# app.intelligence.parameter_resolution consults as one more scoring signal
+# alongside the column's own name. A column absent from this file is still
+# fully resolvable from its own name (see _column_phrases); add an entry
+# here only when the physical column name is not something a user would
+# naturally type (e.g. "core_year" for what users call "academic year").
+tables:
+  student_admissions:
+    core_year:
+      description: "Academic year associated with the student's admission"
+      aliases:
+        - academic year
+        - admission year
+        - academic session
+        - academic year of admission
+      value_catalog: true
+    center_name:
+      description: "Training center the student belongs to, e.g. 'BTC - PEENYA'"
+      aliases:
+        - centre
+      value_catalog: true
+    status:
+      description: >
+        The student's current admission status (a real ENUM - allowed_values
+        lists every one, e.g. active, withdrawn, passout, inactive,
+        temporary_enrolled). A strength "with any status" means no status
+        filter; "status wise" means group by this column.
+    stream_name:
+      description: "Full stream/branch name, e.g. 'Diploma in Mechatronics Engineering and Smart Factory'"
+      value_catalog: true
+    program_name:
+      description: "Program level: DIPLOMA, CERTIFICATE or POST DIPLOMA"
+      value_catalog: true
+    residency_type:
+      description: >
+        Whether the student stays in a hostel: 'Hosteller', 'Day Scholar', or
+        'Temporary' (a handful of rows); NULL means not recorded. "hostel" /
+        "boarder" / "boarding" and "boys"/"girls" (for gender) are rewritten
+        to the real stored words before matching - see semantic.synonyms.
+      value_catalog: true
+    punching_code:
+      description: >
+        The student's biometric device code - joins to biometric_info.
+        punching_code (see relationship admission_to_biometric) for
+        attendance. NULL/'' means the student was never enrolled on the
+        biometric device.
+  biometric_info:
+    punch_time:
+      description: >
+        One row per device punch (a student may punch several times a day,
+        e.g. in/out per session) - there is no separate in/out flag. A
+        student is PRESENT on a date when at least one row has DATE(punch_time)
+        equal to that date; their first punch of the day (MIN(punch_time)
+        grouped by student and date) is their arrival time.
+  core_exam_results:
+    semester_id:
+      description: >
+        Which semester this exam record belongs to (1, 2, 3, ...) - not the
+        student's current/overall semester (that's student_admissions.
+        semester_no). When a query is about results/marks/cgpa/sgpa for a
+        specific semester, "semester" means this column; curated as an
+        alias (highest resolution priority) so it's preferred over
+        student_admissions.semester_no whenever core_exam_results is a
+        candidate table for the query.
+      aliases:
+        - semester
+        - semester number
+        - sem
+    center_name:
+      description: "Training center at the time of the exam, e.g. 'BTC - PEENYA'"
+      aliases:
+        - center
+        - centre
+      value_catalog: true
+    program_name:
+      description: "Program level at the time of the exam: DIPLOMA, CERTIFICATE or POST DIPLOMA"
+      value_catalog: true
+    stream_name:
+      description: "Full stream/branch name at the time of the exam"
+      aliases:
+        - stream
+      value_catalog: true
+    academic_year:
+      description: "Academic year of the batch the result belongs to, e.g. '2020 JUN' (same format as student_admissions.core_year)"
+      aliases:
+        - academic year
+        - academic session
+      value_catalog: true
+    midterm_marks:
+      description: "Mid-term (internal) marks obtained in this subject. VARCHAR."
+    endterm_marks:
+      description: "End-term (external/theory+practical) marks obtained in this subject. VARCHAR."
+    total_marks:
+      description: "Total marks (mid-term + end-term) obtained in this subject. VARCHAR."
+    grade_point:
+      description: "Grade point earned in this subject (e.g. 9.5 for grade A). VARCHAR."
+    grand_total:
+      description: >
+        The student's overall total marks for the whole semester - identical
+        on every subject row of the same student and semester (not this
+        subject's marks; that is total_marks).
+    final_exam_type:
+      description: >
+        Which kind of exam this row belongs to. NULL or 'semester' = the
+        REGULAR exam; 'supplementary' = a supplementary (re-)attempt, numbered
+        by suppl_no. A semester's regular rows and each supplementary attempt
+        are separate result sets with their own grand total / SGPA / CGPA /
+        result_status.
+    suppl_no:
+      description: >
+        Supplementary attempt number 1, 2, ... 10 (only when final_exam_type
+        = 'supplementary'; NULL for the regular exam). A supplementary attempt
+        contains only the subjects re-sat.
+    result_status:
+      description: >
+        The student's overall RESULT for the semester (repeated on every
+        subject row of that semester, like sgpa/cgpa/grand_total). Two
+        historical vocabularies coexist: FAIL is stored as 'Fail' OR 'F', PASS
+        as 'Pass' OR 'P' (also '-', 'AB' = absent, 'PC'). To find failed
+        students always match BOTH spellings: result_status IN ('Fail','F');
+        passed: IN ('Pass','P').
+      allowed_values:
+        - Pass
+        - P
+        - Fail
+        - F
+        - '-'
+        - AB
+        - PC
+  student_referrals:
+    status:
+      description: >
+        Category of the referrer (the person who gave the reference), stored
+        as a string code. Inferred from live data (2026-09-21; every code
+        lines up 1:1 with a lead_master source): '1' = student referral (code
+        = the referring student's core_student_code, or hall ticket number),
+        '2' = staff/employee referral (code = employees.employee_code),
+        '3' = alumni referral (roll_number = code), '4' = other/unknown (agency,
+        relative, friend, campus visit ... no code).
+      allowed_values:
+        - '1'
+        - '2'
+        - '3'
+        - '4'
+  employees:
+    first_name:
+      description: "The employee's FULL name (there is no separate last name in practice)."
+    employee_code:
+      description: "Staff code such as '0108/NEC/1999/R'; equals student_referrals.code for a staff referral."
+  users:
+    user_type:
+      description: "JSON-array string of the user's role names, e.g. '[\"core employee\",\"TRAINER-CORE\"]'."
+  family_details:
+    relationship:
+      description: >
+        Which family member this row is (Father/Mother/Guardian/Member) -
+        the column actually populated and used to distinguish family roles
+        for a student. VARCHAR, not a real DB ENUM, so schema extraction
+        can't discover its values automatically - curated here from a live
+        `SELECT DISTINCT relationship FROM family_details` (2026-09-17).
+        Do NOT confuse this with the neighboring `relationship_status`
+        column, which IS a true ENUM with similar-looking values (Father/
+        Mother/Guardian/Spouse/Member/Others) but is not reliable for this
+        purpose - it is 'Member' for ~82% of all rows regardless of the
+        person's actual relation (verified live), including for a
+        student's own father/mother rows. Always filter on `relationship`,
+        never `relationship_status`, when the user names a specific family
+        member (father, mother, guardian).
+      allowed_values:
+        - Father
+        - Mother
+        - Guardian
+        - Member
+  student_payments:
+    payment_type:
+      description: >
+        What kind of payment this is. VARCHAR, not a real DB ENUM, so
+        schema extraction can't discover its values automatically - curated
+        here from a live `SELECT DISTINCT payment_type FROM
+        student_payments` (2026-09-17) so the SQL-generation LLM can ground
+        a literal against the real stored values instead of guessing one
+        (e.g. it otherwise reused a differently-spelled ENUM value from an
+        unrelated column, "temporary_enrolled" instead of the real
+        "temporary_enroll").
+      allowed_values:
+        - demand_payment
+        - credit_to_student
+        - advance_fee_head_adjustment
+        - demand_advance
+        - exam_fee
+        - temporary_enroll
+        - provisionally_enroll
+        - advance_payment
+        - refund_to_student_with_credit_balance
+        - semester_and_other_demand_reversal
+        - advance_payment_reverse
+        - credit_to_student_with_out_credit_balance
+        - demand_advance_reverse
+        - credit_to_student_with_out_credit_balance_refund
+  core_events:
+    event_name:
+      description: "Full title or name of the event, e.g. 'KIRLOSKAR PNUMATICS LTD PUNE-Internship & Hiring-2025-08-21'"
+      aliases:
+        - event name
+        - event title
+        - drive name
+    event_type:
+      description: "Type of placement event: 'Campus Drive', 'Interview Session', or 'Walk-in'"
+      allowed_values:
+        - Campus Drive
+        - Interview Session
+        - Walk-in
+      aliases:
+        - event type
+        - type of event
+        - drive type
+    company_name:
+      description: "Company or employer conducting the event"
+      aliases:
+        - company
+        - recruiter
+        - employer
+        - organization
+        - firm
+    event_date:
+      description: "Scheduled date of the event (DATE type, format YYYY-MM-DD)"
+      aliases:
+        - event date
+        - date of event
+        - scheduled date
+        - drive date
+        - date
+    event_time:
+      description: "Scheduled start time of the event (TIME type, format HH:MM:SS)"
+      aliases:
+        - event time
+        - time of event
+        - scheduled time
+        - drive time
+        - time
+    selection_venue:
+      description: "Venue where the event takes place, e.g. 'DHARWAD NTTF', 'NEC'"
+      aliases:
+        - venue
+        - selection venue
+        - event venue
+        - drive venue
+        - location
+        - place
+    hiring_location:
+      description: "Job/work location for the hired positions, e.g. 'Pune', 'Hosur', 'SANAND'"
+      aliases:
+        - hiring location
+        - job location
+        - work location
+        - posting location
+    position:
+      description: "Job position or role being recruited for"
+      aliases:
+        - position
+        - role
+        - job role
+        - profile
+        - job profile
+    center_name:
+      description: "NTTF Center associated with the event"
+      aliases:
+        - center
+        - centre

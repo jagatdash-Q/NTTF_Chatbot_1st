@@ -1,0 +1,1059 @@
+module: core
+domain: student
+
+version: 2
+
+# This file deliberately covers Core Programme student data only.  LEGS,
+# placement, deployment, and industry-programme tables are out of scope until
+# their identity bridge to Core students has been verified.
+scope:
+  included_domains:
+    - core_programme
+    - placement
+  excluded_domains:
+    - legs_programme
+    - deployment
+
+entities:
+
+  student_lead:
+    table: student_leads
+    primary_key: [id]
+    role: registration_root
+    description: >
+      First student-related record created when a person enters the
+      system for registration/enquiry.
+
+  student_admission:
+    table: student_admissions
+    primary_key: [id]
+    role: admission_root
+    description: >
+      Admission record associated with a student lead. Student-related
+      admission and subsequent student information is maintained here.
+
+  student_enrollment:
+    table: student_enrollments
+    primary_key: [id]
+    role: enrollment_record
+    description: >
+      Enrollment record associated with a student lead. It is the parent for
+      enrollment-specific documents and can be referenced by payments.
+
+  student_payment:
+    table: student_payments
+    primary_key: [id]
+    role: payment_transaction
+    description: >
+      Financial transaction associated with a student lead and, when present,
+      a specific enrollment.
+
+  core_exam_result:
+    table: core_exam_results
+    primary_key: [id]
+    role: academic_result
+    description: >
+      Core academic result record linked to the admission record by
+      core_student_id.
+
+  student_certificate:
+    table: student_certificates
+    primary_key: [id]
+    role: certificate_record
+    description: Certificate record linked to the admission record.
+
+  core_event:
+    table: core_events
+    primary_key: [id]
+    role: event_schedule
+    description: >
+      Event schedule and details for placement and core activities including
+      company drives, interviews, walk-ins, dates, times, and venues.
+
+identity:
+
+  canonical_keys:
+    student_lead_id:
+      table: student_leads
+      column: id
+      description: Root identifier for lead, enrollment, and lead-scoped finance data.
+    student_admission_id:
+      table: student_admissions
+      column: id
+      description: Identifier required for admission-scoped academic and certificate data.
+    student_enrollment_id:
+      table: student_enrollments
+      column: id
+      description: Identifier required for enrollment-scoped documents and payments.
+
+  context:
+    description: >
+      A resolved student is represented by the available lead, admission, and
+      enrollment identifiers. A query may only use a relationship explicitly
+      listed below; it must not assume that student_id or core_student_id is a
+      student_lead_id.
+
+  identifiers:
+
+    enquiry_number:
+      user_terms:
+        - enquiry number
+        - enquiry id
+        - enquiry
+      table: student_leads
+      column: enquiry_number
+      resolves_to: identity_context
+
+    hall_ticket_number:
+      user_terms:
+        - hall ticket
+        - hall ticket number
+        - ticket number
+      table: student_leads
+      column: ticket_number
+      resolves_to: identity_context
+
+    core_student_code:
+      user_terms:
+        - core student id
+        - student id
+        - core student code
+        - student code
+        - roll number
+        - student roll number
+      table: student_admissions
+      column: core_student_code
+      resolves_to: identity_context
+    status:
+      user_terms:
+        - status
+        - admission status
+        - student status
+        - student current status
+      table: student_admissions
+      column: status
+      resolves_to: identity_context
+
+relationships:
+
+  lead_to_admission:
+    name: lead_to_admission
+    from:
+      table: student_leads
+      column: id
+
+    to:
+      table: student_admissions
+      column: student_lead_id
+
+    cardinality: one_to_one
+
+    source: laravel_model
+
+    verified: true
+
+    description: >
+      A student first has a record in student_leads. The corresponding
+      admission record is created in student_admissions using
+      student_admissions.student_lead_id = student_leads.id.
+
+  lead_to_enrollment:
+    name: lead_to_enrollment
+    from:
+      table: student_leads
+      column: id
+    to:
+      table: student_enrollments
+      column: student_lead_id
+    cardinality: one_to_one
+    source: laravel_model
+    verified: true
+    description: StudentEnrollment::getStudentLead maps enrollment to its lead.
+
+  lead_to_payment:
+    name: lead_to_payment
+    from:
+      table: student_leads
+      column: id
+    to:
+      table: student_payments
+      column: student_lead_id
+    cardinality: one_to_many
+    source: laravel_model
+    verified: true
+    description: StudentPayment::getStudentLeadDetails maps payments to their lead.
+
+  enrollment_to_payment:
+    name: enrollment_to_payment
+    from:
+      table: student_enrollments
+      column: id
+    to:
+      table: student_payments
+      column: student_enrollment_id
+    cardinality: one_to_many
+    source: schema_column
+    verified: false
+    description: >
+      The column exists, but the Laravel models currently navigate payments by
+      student_lead_id rather than this key. Keep this relationship unavailable
+      to query generation until its semantics are confirmed.
+
+  enrollment_to_document:
+    name: enrollment_to_document
+    from:
+      table: student_enrollments
+      column: id
+    to:
+      table: student_enrollment_documents
+      column: student_enrollment_id
+    cardinality: one_to_many
+    source: laravel_model
+    verified: true
+    description: StudentEnrollment::getDocument maps documents to an enrollment.
+
+  admission_to_exam_result:
+    name: admission_to_exam_result
+    from:
+      table: student_admissions
+      column: id
+    to:
+      table: core_exam_results
+      column: core_student_id
+    cardinality: one_to_many
+    source: laravel_model
+    verified: true
+    description: >
+      CoreExamResults::student and StudentAdmission::results map
+      core_exam_results.core_student_id to student_admissions.id.
+
+  admission_to_certificate:
+    name: admission_to_certificate
+    from:
+      table: student_admissions
+      column: id
+    to:
+      table: student_certificates
+      column: student_admission_id
+    cardinality: one_to_many
+    source: laravel_model_and_schema_fk
+    verified: true
+    description: StudentCertificate::studentAdmission maps certificates to admissions.
+
+  lead_to_referral:
+    name: lead_to_referral
+    from:
+      table: student_leads
+      column: id
+    to:
+      table: student_referrals
+      column: student_lead_id
+    cardinality: one_to_one
+    source: laravel_model
+    verified: true
+    description: Studentlead::getReferral() -> hasOne(StudentReferral::class, 'student_lead_id', 'id').
+
+  referral_to_employee:
+    name: referral_to_employee
+    from:
+      table: student_referrals
+      column: code
+    to:
+      table: employees
+      column: employee_code
+    cardinality: many_to_one
+    source: data_verified
+    verified: true
+    description: >
+      NOT defined in the Laravel models - verified from live data (2026-09-21):
+      1313 of 1336 staff-category referrals (student_referrals.status = '2')
+      have code = employees.employee_code, in the ERP's staff-code format
+      (e.g. '0108/NEC/1999/R'). Only meaningful when student_referrals.status
+      = '2'. A few employee codes are duplicated across employees rows, so
+      an occasional referral can match more than one employee row.
+
+  referral_to_referrer_admission:
+    name: referral_to_referrer_admission
+    from:
+      table: student_referrals
+      column: code
+    to:
+      table: student_admissions
+      column: core_student_code
+    cardinality: many_to_one
+    source: data_verified
+    verified: true
+    description: >
+      NOT defined in the Laravel models - verified from live data (2026-09-21):
+      1751 of 2177 student-category referrals (student_referrals.status = '1')
+      have code = the REFERRING student's core_student_code. Only meaningful
+      when status = '1'. This joins student_admissions a second time (as the
+      referrer, distinct from the referred student) - always use a separate
+      alias, e.g. referrer_sa, and its own student_leads alias for the name.
+
+  employee_to_user:
+    name: employee_to_user
+    from:
+      table: employees
+      column: user_id
+    to:
+      table: users
+      column: id
+    cardinality: one_to_one
+    source: laravel_model
+    verified: true
+    description: Employee::getEmployeeDetails() -> hasOne(User::class, 'id', 'user_id').
+
+  admission_to_lead_source:
+    name: admission_to_lead_source
+    from:
+      table: student_admissions
+      column: lead_source_id
+    to:
+      table: lead_master
+      column: id
+    cardinality: one_to_one
+    source: laravel_model
+    verified: true
+    description: >
+      StudentAdmission::getLead() -> hasOne(LeadMaster::class, 'id',
+      'lead_source_id'). lead_master.lead_name is the lead-source/referral
+      TYPE (e.g. "Offline_Staff Referral", "Offline_Student Campus Visit") -
+      distinct from student_referrals.name, which is the actual named
+      referrer person (if any).
+
+  admission_to_family:
+    name: admission_to_family
+    from:
+      table: student_admissions
+      column: student_lead_id
+    to:
+      table: student_families
+      column: student_lead_id
+    cardinality: one_to_many
+    source: laravel_model
+    verified: true
+    description: >
+      StudentAdmission::getFamily() -> hasMany(StudentFamily::class,
+      'student_lead_id', 'student_lead_id'). A student has one
+      student_families row per family member (father, mother, guardian, ...).
+
+  family_to_family_details:
+    name: family_to_family_details
+    from:
+      table: student_families
+      column: family_details_id
+    to:
+      table: family_details
+      column: id
+    cardinality: one_to_one
+    source: laravel_model
+    verified: true
+    description: >
+      StudentFamily::getFamilyDetails() -> hasOne(FamilyDetails::class, 'id',
+      'family_details_id'). family_details.relationship holds the row's
+      category as one of: Father, Mother, Guardian, Member (verified live
+      values). name/dob/contact/email/occupation are per-relation, not
+      per-student - filter relationship to the one the user asked about.
+
+  admission_to_biometric:
+    name: admission_to_biometric
+    from:
+      table: student_admissions
+      column: punching_code
+    to:
+      table: biometric_info
+      column: punching_code
+    cardinality: one_to_many
+    source: data_verified
+    verified: true
+    description: >
+      NOT a declared foreign key - verified from live data (2026-09-22):
+      of 20,015 student_admissions rows with a non-empty punching_code,
+      7,597 have at least one matching biometric_info row (the device
+      attendance/punch log). biometric_info.core_student_code agrees with
+      almost exactly the same set of matches, so either column joins the
+      two tables equally well - punching_code is used because it is the
+      column named in both tables' Laravel models for this purpose. A
+      student_admissions row with punching_code NULL or '' was never
+      enrolled on the biometric device at all - exclude those rows from
+      any presence/absence query rather than counting them as absent. A
+      handful of punching_code values repeat across 2-3 student_admissions
+      rows (rare duplicate device-code data entry); attendance for those
+      rows can't be told apart by punching_code alone.
+
+identity_resolution:
+
+  strategy: deterministic
+
+  allowed_identifiers:
+    - enquiry_number
+    - hall_ticket_number
+    - core_student_code
+
+  resolution_rules:
+
+    enquiry_number:
+      lookup:
+        table: student_leads
+        column: enquiry_number
+      return:
+        student_lead_id: student_leads.id
+
+    hall_ticket_number:
+      lookup:
+        table: student_leads
+        column: ticket_number
+      return:
+        student_lead_id: student_leads.id
+
+    core_student_code:
+      lookup:
+        table: student_admissions
+        column: core_student_code
+      return:
+        student_lead_id: student_admissions.student_lead_id
+        student_admission_id: student_admissions.id
+        core_student_code: student_admissions.core_student_code
+
+  unresolved_behavior:
+    not_found: clarification
+    multiple_matches: clarification
+    missing_identifier: clarification
+
+student_status:
+
+  source: unresolved
+
+  description: >
+    The student's admission status is maintained through the student
+    admission status table. A person is considered a student in the
+    system after progressing through the applicable temporary,
+    provisional, enrolled, or active admission stages according to
+    the application's admission workflow.
+
+  status_source_table: null
+  status_source_column: null
+
+  note: >
+    The authoritative admission-status table and its exact columns
+    must be defined before status-based queries are enabled.
+
+downstream_resolution:
+
+  rule: >
+    After resolving a user-provided identifier, downstream Core tables must be
+    accessed only through relationships explicitly defined in this truth layer.
+    Select the required key from the identity context: student_lead_id for
+    lead-scoped data, student_admission_id for academic/certificate data, and
+    student_enrollment_id for enrollment-scoped data.
+
+  no_assumption_join: true
+
+query_rules:
+
+  student_identifier_required_when_specific_student:
+    enabled: true
+
+  allowed_identifier_types:
+    - enquiry_number
+    - hall_ticket_number
+    - core_student_code
+
+  deterministic_resolution_required: true
+
+  allow_llm_to_infer_identifier_type: false
+
+  allow_llm_to_infer_relationships: false
+
+  allow_unverified_join: false
+
+# Semantic and query-catalog metadata drives deterministic preprocessing. The
+# Python code consumes this metadata; it does not select tables by hardcoded
+# domain assumptions.
+semantic:
+  module_terms:
+    - student
+    - admission
+    - enrolment
+    - enrollment
+    - fee
+    - payment
+    - result
+    - certificate
+    # Questions that never say "student" but are unambiguously about Core
+    # student data: marks/results by cohort filters, referrals.
+    - marks
+    - semester
+    - sgpa
+    - cgpa
+    - subject
+    - referral
+    - referred
+    - reference
+    - enquiry
+    # Attendance / hostel-and-gender questions never say "student" either.
+    - attendance
+    - present
+    - absent
+    - late
+    - punch
+    - biometric
+    - hostel
+    - residency
+    - gender
+    # Placement and core events
+    - event
+    - events
+    - placement
+    - drive
+    - drives
+    - interview
+    - walkin
+    - walk-in
+  out_of_scope_terms:
+    - legs
+    - deployment
+  # Other words users say for a domain word. The question is rewritten with
+  # the canonical word (plurals kept: trainees -> students) BEFORE any
+  # matching - scope gate, intent terms, filter extraction - and the LLM is
+  # shown the rewritten question too. Add a synonym here instead of adding
+  # the variant to every `terms` list.
+  synonyms:
+    student: [trainee, learner]
+    count: [strength, headcount]
+    "placement event": [placement drive, campus drive, hiring event, placement session]
+    # Gender/hostel wording the gender/residency_type filters below expect
+    # already spelled out (see semantic.parameters.gender/residency_type),
+    # so a bare "boys"/"hostel" resolves the same as the real column value.
+    male: [boy]
+    female: [girl]
+    Hosteller: [hostel, hostels, boarder, boarding]
+    "Day Scholar": [dayscholar]
+  entities:
+    student:
+      terms: [student, students, learner, learners]
+    event:
+      terms: [event, events, drive, drives, walkin, walk-in, interview, placement]
+  # Curated parameters are reserved for business semantics that cannot be
+  # derived reliably from the schema alone: identity identifiers, and
+  # irregular word orders (e.g. "Fitter program", where the value precedes
+  # the concept word). A bare `concept`/`aliases` entry is expanded into the
+  # shared connector-and-value grammar in
+  # app.intelligence.parameter_resolution.build_concept_pattern - the same
+  # grammar every dynamically discovered column-based concept also uses -
+  # so connector handling ("is"/"as"/"="/":"/"#") never needs to be
+  # re-implemented per parameter. Only `program` needs a hand-written
+  # `pattern` because its value precedes the concept word.
+  #
+  # Anything not listed here (batch, gender, semester, center, ...) is
+  # resolved dynamically from the candidate tables' own column metadata by
+  # app.intelligence.parameter_resolution.ParameterResolver - no manual
+  # entry is required to add a new filterable column.
+  parameters:
+    program:
+      table: student_admissions
+      column: program_name
+      # For a results question (catalog `preferred_filter_tables`) the same
+      # concept resolves to the results table instead.
+      alternates:
+        core_exam_results: program_name
+      patterns:
+        - '\b(?:in|for)\s+(?:the\s+)?(?P<value>[A-Za-z][A-Za-z &-]*?)\s+program\b'
+        - '\bprogram\b\s*(?:is|as|=|:|#)?\s*(?P<value>[A-Za-z0-9][\w&-]*)'
+    status:
+      table: student_admissions
+      column: status
+      concept: status
+      aliases: [status, admission status, student status, student current status]
+      # Live-repro'd gap (2026-09-22): "total ACTIVE student strength" and
+      # "which ACTIVE center has..." both name no "status" word at all, so
+      # the aliases grammar above never anchors - the word "active" alone,
+      # right before student/trainee/learner OR a grouping dimension noun
+      # (the second case means "considering only active students, broken
+      # down by center/..."), is the value. Scoped to the enum's own spoken
+      # words immediately before one of these specific nouns (not a bare
+      # "active" anywhere) so it can't misfire on unrelated uses of these
+      # common words elsewhere in a question. Extend with more
+      # allowed_values spellings/dimension nouns if reported.
+      bare_value_pattern: '\b(?P<value>active|withdrawn|passout|inactive|suspend|closed)\s+(?:students?|trainees?|learners?|centers?|centres?|programs?|streams?|batch(?:es)?|sections?|groups?)\b'
+    enquiry_number:
+      table: student_leads
+      column: enquiry_number
+      concept: enquiry_number
+      aliases: [enquiry number, enquiry id, enquiry]
+    hall_ticket_number:
+      table: student_leads
+      column: ticket_number
+      concept: hall_ticket_number
+      aliases: [hall ticket number, hall ticket, ticket number]
+    core_student_code:
+      table: student_admissions
+      column: core_student_code
+      concept: core_student_code
+      # "student with code X" / "student having code X" say "student" and
+      # "code" with a connecting word between them, which the shared
+      # <phrase> [connector] <value> grammar doesn't span - so these are
+      # listed as their own phrases rather than relying on "student code"
+      # alone. A bare "code" alias is deliberately NOT added: since
+      # biometric_info.punching_code entered scope (student_attendance),
+      # "code" alone would be ambiguous with a punching code.
+      aliases: [core student id, student id, core student code, student code, roll number, student roll number, student with code, student having code, student whose code]
+      # Live-repro'd gap (2026-09-22): "is this student present today
+      # NEC0525039" gives the code with NO anchor word anywhere ("code",
+      # "student", ...) - it's just typed at the end. Every real
+      # core_student_code is LETTERS immediately followed by DIGITS, no
+      # space/hyphen (verified against every stored value:
+      # ^[A-Z]{2,14}\d{4,9}$ covers ~93% of them; the rest are a different,
+      # hyphenated bulk-upload naming scheme not typically typed by a user).
+      # This shape does not collide with enquiry_number (has a hyphen, and
+      # its leading letter run is only 1 char: "E26-..."), ticket_number
+      # (hyphenated), punching_code (all digits, no letters) or batch_name
+      # (always ends in letters, e.g. "...BNTC-A", never digits) - verified
+      # against every stored value of each.
+      bare_value_pattern: '\b(?P<value>[A-Za-z]{2,14}\d{4,9})\b'
+    # gender/residency_type need hand-written patterns (like program) because
+    # the value word IS the whole filter - "boys"/"girls" (rewritten to
+    # male/female above) and "hostel" carry no separate concept word of their
+    # own the generic <phrase> <value> grammar could anchor on.
+    gender:
+      table: student_admissions
+      column: gender
+      patterns:
+        - '\bgender\b\s*(?:is|as|=|:|#)?\s*(?P<value>male|female|other)\b'
+        - '\b(?P<value>male|female)\b'
+    residency_type:
+      table: student_admissions
+      column: residency_type
+      patterns:
+        - '\b(?:residency|hostel)\s*(?:type|status)?\b\s*(?:is|as|=|:|#)?\s*(?P<value>hosteller|day\s*scholar|temporary)\b'
+        - '\b(?P<value>hosteller|day\s*scholar)s?\b'
+
+query_catalog:
+  student_listing:
+    terms: [show students, list students, students enrolled, enrolled students, students, student detail, student details, student info, student information, student count, how many student, total student, boys, girls, hostel, gender wise, section wise, group wise]
+    entities: [student]
+    tables: [student_leads, student_admissions]
+    output_columns:
+      student_leads: [id, applicant_name, dob, enquiry_number]
+      student_admissions: [id, student_lead_id, core_student_code, batch_name, section_name, group_name, center_name, program_name, stream_name, core_year, status, gender, residency_type]
+    required_relationships: [lead_to_admission]
+    requires_identity: false
+    sql_hints:
+      - >
+        Student strength / count / total questions: one student_admissions row
+        is one student, so strength is COUNT(*) FROM student_admissions
+        (no join is needed unless a name or another table's column is
+        wanted). Alias the count as strength.
+      - >
+        "<dimension> wise" (or "by <dimension>", "for each <dimension>") means
+        break the strength down: SELECT that dimension's column plus the
+        count and GROUP BY it. Dimensions: center wise -> center_name,
+        program wise -> program_name, stream wise -> stream_name, academic
+        year wise -> core_year, status wise -> status, batch wise ->
+        batch_name, section wise -> section_name, group wise -> group_name,
+        gender wise -> gender, hostel wise / residency wise -> residency_type.
+        Several dimensions ("center and program wise") group by all of them;
+        end with ORDER BY the dimension columns. Select each dimension column
+        under its own name (do not alias it "center_wise" and the like). A
+        question with no "wise" is a single total: no GROUP BY.
+      - >
+        A status the question names ("with status withdrawn") is a filter and
+        arrives in minimal_schema.parameters; "any status" / no status
+        mentioned means NO status filter (count every status).
+      - >
+        "How many trainees are in hostel (boys & girls)" or similar: filter
+        residency_type = 'Hosteller' and GROUP BY gender, so both counts come
+        back in one result (SELECT gender, COUNT(*) AS strength FROM
+        student_admissions WHERE residency_type = :residency_type GROUP BY
+        gender). A plain "how many are in hostel" with no gender/boys/girls
+        wording is just the filtered total: no GROUP BY.
+  student_result:
+    terms: [result, results, marks, grade, cgpa, sgpa, grand total, subject wise, subject-wise, subject, midterm, endterm, fail, failed]
+    entities: [student]
+    # student_leads/student_admissions are here only to name the student:
+    # core_exam_results.core_student_name is EMPTY on every row (verified
+    # 2026-09-21), so a student's name always comes from
+    # student_leads.applicant_name via student_admissions.
+    tables: [student_leads, student_admissions, core_exam_results]
+    # Filters (center, program, stream, academic year, semester, ...) belong
+    # to the results table for this intent - see ParameterResolver.
+    preferred_filter_tables: [core_exam_results]
+    filter_tables: [student_admissions, core_exam_results]
+    output_columns:
+      student_leads: [id, applicant_name]
+      student_admissions: [id, student_lead_id, core_student_code]
+      core_exam_results: [core_student_id, core_student_code, center_name, program_name, stream_name, academic_year, semester_id, subject_code, subject_name, midterm_marks, endterm_marks, total_marks, grade, grade_point, grand_total, result_status, sgpa, cgpa, final_exam_type, suppl_no]
+    required_relationships: [lead_to_admission, admission_to_exam_result]
+    sql_hints:
+      - >
+        core_exam_results has one row per SUBJECT per semester. sgpa, cgpa,
+        grand_total and result_status are per-STUDENT-per-semester values
+        repeated on every subject row.
+      - >
+        Exam attempts. core_exam_results keeps every attempt of a semester:
+        the REGULAR exam is final_exam_type IS NULL or 'semester' (suppl_no is
+        NULL); each SUPPLEMENTARY attempt is final_exam_type = 'supplementary'
+        with suppl_no 1, 2, ... 10. ALWAYS select final_exam_type and suppl_no
+        (right after the semester) for any subject-wise or per-semester result,
+        so the attempts stay separate. Read interpreted_request.result_scope:
+        exam_type 'regular' -> filter (final_exam_type IS NULL OR
+        final_exam_type = 'semester'); exam_type 'supplementary' -> filter
+        final_exam_type = 'supplementary', and also suppl_no = N when attempt
+        is N; exam_type null (this includes consolidated) -> NO exam-type or
+        suppl_no filter at all: return every attempt. Never add DISTINCT on
+        subject rows in a way that merges different attempts.
+      - >
+        Subject-wise marks: return one row per subject per attempt for the
+        requested semester (every semester if none is named); do not collapse
+        them. Select the columns in this order. Student details first:
+        student_leads.applicant_name, core_exam_results.core_student_code,
+        semester_id, final_exam_type, suppl_no - plus, when the question asks
+        for them: program_name, stream_name, academic year
+        (student_admissions.core_year), current status
+        (student_admissions.status), father name. Then per subject:
+        subject_name, subject_code, midterm_marks, endterm_marks, total_marks,
+        and ALWAYS grade and grade_point (the pass/fail of each subject is
+        derived from the grade; they are only displayed if the question asked
+        for grade / GP). Add the semester totals grand_total, sgpa, cgpa,
+        result_status (all four together) ONLY if the question asks for any
+        semester-level figure: total marks / grand total, SGPA, CGPA or the
+        result. The answer is rendered as a mark sheet from exactly these
+        columns, so do not add unrelated columns.
+      - >
+        Consolidated result (interpreted_request.result_scope.consolidated is
+        true): the answer shows the latest attempt of every subject, built from
+        SUBJECT rows of EVERY attempt of the semester. So return the subject
+        rows (subject_name, subject_code, midterm_marks, endterm_marks,
+        total_marks, grade, grade_point) together with final_exam_type and
+        suppl_no for all attempts, and put the semester figures the question
+        asks for (grand_total, sgpa, cgpa, result_status) on those same rows.
+        Never reduce a consolidated request to per-semester rows or DISTINCT.
+      - >
+        Per-semester SGPA / CGPA / grand total / result (not subject detail,
+        and not a consolidated request):
+        use SELECT DISTINCT on the per-semester columns (semester_id, sgpa,
+        cgpa, grand_total, result_status - plus applicant_name and
+        core_student_code) instead of every subject row, otherwise the result
+        is inflated many-fold and later rows are cut off.
+      - >
+        "Grand total" means the grand_total COLUMN (a student's overall marks
+        for the semester), so "grand total of failed students in semester N"
+        is a LIST of each failed student (DISTINCT core_student_code,
+        applicant_name, semester_id, grand_total, sgpa, cgpa, result_status).
+        Use COUNT(DISTINCT core_student_code) only when the question asks how
+        many / the count / the number of students.
+      - >
+        Filters that came from minimal_schema.parameters (center, program,
+        stream, academic year, semester, ...) are columns of core_exam_results
+        itself - use them directly on it. Join student_admissions and
+        student_leads only when the question needs a student's name or other
+        admission details; core_exam_results has no usable student name, so
+        always take it from student_leads.applicant_name.
+    # One specific student (by identifier) OR a cohort described by at least
+    # one filter - "nothing is mandatory, more filters = narrower data".
+    requires_identity: true
+    identity_optional_with_filters: true
+  student_certificate:
+    terms: [certificate, provisional certificate]
+    entities: [student]
+    tables: [student_admissions, student_certificates]
+    output_columns:
+      student_admissions: [id, core_student_code]
+      student_certificates: [student_admission_id, certificate_no, pass_status, classification, certificate_year]
+    required_relationships: [admission_to_certificate]
+    requires_identity: true
+  student_family:
+    terms: [father, father name, mother, mother name, guardian, guardian name, parent, parents, family, family details, family member, emergency contact]
+    entities: [student]
+    tables: [student_admissions, student_families, family_details]
+    output_columns:
+      student_admissions: [id, student_lead_id, core_student_code]
+      student_families: [student_lead_id, family_details_id]
+      family_details: [id, relationship, name, dob, contact, email, occupation]
+    required_relationships: [admission_to_family, family_to_family_details]
+    sql_hints:
+      - >
+        family_details.relationship distinguishes Father / Mother / Guardian /
+        Member rows tied to one student. When the question names one specific
+        member (father name, mother's contact, ...), add
+        family_details.relationship = 'Father' (title-case value from
+        allowed_values) - do not return every family member's row. Filter on
+        `relationship`, never on the unreliable `relationship_status`.
+    requires_identity: true
+  student_payment:
+    terms: [payment, payments, paid, fee paid, payment made, payment type, payment done]
+    entities: [student]
+    tables: [student_leads, student_admissions, student_payments]
+    output_columns:
+      student_leads: [id, applicant_name, enquiry_number]
+      student_admissions: [id, student_lead_id, core_student_code, status]
+      student_payments: [id, student_lead_id, payment_type, fee_paid, payment_date]
+    required_relationships: [lead_to_admission, lead_to_payment]
+    requires_identity: false
+  student_referral:
+    terms: [referral, referrals, referred, refer, referrer, referred by, who referred, reference, lead source]
+    entities: [student]
+    tables: [student_leads, student_admissions, student_referrals, lead_master]
+    filter_tables: [student_leads, student_admissions]
+    output_columns:
+      student_leads: [id, applicant_name, enquiry_number, ticket_number]
+      student_admissions: [id, student_lead_id, core_student_code, lead_source_id]
+      student_referrals: [id, student_lead_id, name, code, centre, course, phone_number, roll_number, agency_name, program_name, year_of_passing, status]
+      lead_master: [id, lead_name]
+    required_relationships: [lead_to_admission, lead_to_referral, admission_to_lead_source]
+    requires_identity: true
+  student_referrer_details:
+    # The referrer's own record: employee_* / users for a staff referral,
+    # a second student_admissions/student_leads pair for a student referral.
+    terms: [employee, employee details, staff details, referrer details, details of the referrer, referrer's details, user details, details of the student who, student who has given, student who gave, user who has given, user who gave, employee who, staff who]
+    entities: [student]
+    tables: [student_leads, student_admissions, student_referrals, employees, users]
+    filter_tables: [student_leads, student_admissions]
+    output_columns:
+      student_leads: [id, applicant_name, enquiry_number, ticket_number]
+      student_admissions: [id, student_lead_id, core_student_code, program_name, batch_name, center_name, stream_name]
+      student_referrals: [id, student_lead_id, code, name, phone_number, status]
+      employees: [id, user_id, employee_code, first_name, designation, email, mobile, primary_center, employee_type, employee_category, employee_status, date_of_joining, gender]
+      users: [id, name, email, user_type, user_status, work_status]
+    required_relationships: [lead_to_admission, lead_to_referral, referral_to_employee, employee_to_user, referral_to_referrer_admission]
+    sql_hints:
+      - >
+        student_referrals.code is the REFERRER's own identifier and
+        student_referrals.status says which kind of referrer it is (see that
+        column's description): '1' student, '2' staff/employee, '3' alumni,
+        '4' other. The FIRST student_leads (sl) / student_admissions (sa) in
+        the query always describe the student the question is ABOUT (the one
+        who was referred) - never select the referrer's details from them.
+        Only join the referrer table(s) the question asks for, using LEFT
+        JOINs so a referral of another kind still returns the basic referral
+        row.
+      - >
+        Employee / staff / user who gave the reference - pattern: SELECT
+        e.employee_code, e.first_name, e.designation, e.email, e.mobile, ...,
+        u.name, u.user_type FROM student_leads sl JOIN student_referrals sr ON
+        sr.student_lead_id = sl.id LEFT JOIN employees e ON e.employee_code =
+        sr.code LEFT JOIN users u ON u.id = e.user_id WHERE
+        sl.enquiry_number = :enquiry_number (use the identifier parameter that
+        was actually supplied).
+      - >
+        STUDENT who gave the reference - pattern: SELECT referrer_sl.applicant_name,
+        referrer_sa.core_student_code, referrer_sa.program_name,
+        referrer_sa.batch_name, referrer_sa.center_name,
+        referrer_sa.stream_name FROM student_leads sl JOIN student_referrals sr
+        ON sr.student_lead_id = sl.id JOIN student_admissions referrer_sa ON
+        referrer_sa.core_student_code = sr.code JOIN student_leads referrer_sl
+        ON referrer_sl.id = referrer_sa.student_lead_id WHERE
+        sl.enquiry_number = :enquiry_number. The referrer's admission and lead
+        rows need their OWN aliases (referrer_sa, referrer_sl); the join from
+        referrer_sa to referrer_sl is referrer_sl.id = referrer_sa.student_lead_id.
+      - >
+        Never expose password/token columns - none are in minimal_schema.
+    requires_identity: true
+  student_attendance:
+    # Bare "present"/"absent"/"late" are included (not just the longer
+    # phrases above) so word order never matters ("absent continuously for
+    # 5 days" vs "continuously absent") - safe here because no other
+    # catalog entry claims these words (student_result's exam-absence value
+    # 'AB' is never spelled "absent" in a question's own wording).
+    terms: [attendance, present, absent, late, present today, present on, absent today, absent on, who is present, who is absent, is present, is absent, late arrival, arrived late, late comer, latecomer, came late, punch, punched in, biometric, attendance today, daily attendance, continuously absent, consecutive absent, attendance percentage, attendance summary, attendance rate, days in a row, days consecutively]
+    entities: [student]
+    # biometric_info is NOT a filter table: its only filterable-looking
+    # column (location) is the device's location string, not the official
+    # center_name, and would be a false-friend match for a "center" filter.
+    tables: [student_leads, student_admissions, biometric_info]
+    filter_tables: [student_admissions]
+    output_columns:
+      student_leads: [id, applicant_name]
+      student_admissions: [id, student_lead_id, core_student_code, punching_code, batch_name, section_name, group_name, center_name, program_name, stream_name, core_year, status, gender, residency_type]
+      biometric_info: [student_admission_id, core_student_code, punching_code, punch_time, location]
+    required_relationships: [lead_to_admission, admission_to_biometric]
+    requires_identity: false
+    sql_hints:
+      - >
+        Join student_admissions (sa) to biometric_info (bi) ON
+        bi.punching_code = sa.punching_code (relationship
+        admission_to_biometric - not a declared foreign key, see its
+        description for match quality). Always also filter/require
+        sa.punching_code IS NOT NULL AND sa.punching_code <> '' - a student
+        with no punching_code was never enrolled on the biometric device, so
+        they are neither present nor absent, just untracked; do not count
+        them either way unless the question explicitly asks who is untracked.
+      - >
+        Dates: "today" means DATE(bi.punch_time) = CURDATE() - never a bound
+        parameter. A specific calendar date the question names (e.g.
+        "2026-09-01", "1st September 2026") is NOT an extracted parameter
+        either (there is no :date placeholder supplied) - write it directly
+        as a quoted literal, DATE(bi.punch_time) = '2026-09-01'. A relative
+        span ("this week", "last 5 days") is computed from CURDATE() with
+        INTERVAL, e.g. bi.punch_time >= CURDATE() - INTERVAL 6 DAY.
+      - >
+        PRESENT on a date: at least one biometric_info row exists for the
+        student with DATE(bi.punch_time) = that date (LEFT JOIN ... IS NOT
+        NULL, or EXISTS). ABSENT is the negation - no such row (LEFT JOIN
+        ... IS NULL, or NOT EXISTS).
+      - >
+        "Is <student> present today/on <date>" (one student, resolved by an
+        identifier or a filter that narrows to one row): a student punches
+        several times a day, so a LEFT JOIN to biometric_info returns one
+        row PER PUNCH - never add a bare LIMIT 1 to pick among them, that
+        returns an arbitrary punch (possibly on the wrong date) instead of
+        the true answer. GROUP BY the student and aggregate with MAX(CASE
+        ...) so every one of their punch rows is considered: SELECT sa.id,
+        sa.core_student_code, sl.applicant_name, MAX(CASE WHEN
+        DATE(bi.punch_time) = '2026-09-01' THEN 1 ELSE 0 END) AS was_present
+        FROM student_admissions sa LEFT JOIN student_leads sl ON sl.id =
+        sa.student_lead_id LEFT JOIN biometric_info bi ON bi.punching_code =
+        sa.punching_code WHERE sa.core_student_code = :core_student_code
+        GROUP BY sa.id, sl.id.
+      - >
+        GROUP BY rule for the query above (sql_mode=only_full_group_by is
+        ON): GROUP BY each joined table's PRIMARY KEY (sa.id, and sl.id if
+        student_leads columns like applicant_name are selected) - MySQL then
+        allows every OTHER selected column of that same table without
+        listing each one individually. Grouping by a display column instead
+        (core_student_code, applicant_name, batch_name, ...) does NOT do
+        this and the query is rejected by the database as soon as you select
+        one more non-aggregated column than you listed in GROUP BY (e.g.
+        adding batch_name/section_name/center_name to the SELECT list for
+        "student detail" alongside presence) - live-repro'd error: "Expression
+        ... is not in GROUP BY clause ... incompatible with
+        sql_mode=only_full_group_by". Always add sa.id (and sl.id when
+        student_leads is joined) to GROUP BY, however many student_admissions/
+        student_leads columns the question asks for.
+      - >
+        Cohort attendance count ("what is the attendance today", "how many
+        present/absent today") - restricted to any filters named (center,
+        program, batch, section, group, ...). ALWAYS use this one LEFT JOIN
+        + CASE shape, never a plain COUNT(DISTINCT sa.id) for "present" -
+        that counts the whole tracked cohort (everyone with a punching_code),
+        not who actually punched that date. Present only: SELECT
+        COUNT(DISTINCT CASE WHEN DATE(bi.punch_time) = CURDATE() THEN sa.id
+        END) AS present_count FROM student_admissions sa LEFT JOIN
+        biometric_info bi ON bi.punching_code = sa.punching_code WHERE
+        sa.punching_code IS NOT NULL AND sa.punching_code <> ''. Present AND
+        absent together: add COUNT(DISTINCT sa.id) - COUNT(DISTINCT CASE
+        WHEN DATE(bi.punch_time) = CURDATE() THEN sa.id END) AS absent_count
+        to the same SELECT (COUNT(DISTINCT sa.id) is correct HERE only
+        because it is the subtraction's starting total, not itself the
+        "present" figure).
+      - >
+        "Which <dimension> has the lowest/highest attendance" (dimension:
+        center, program, batch, section, group - center_name/program_name/
+        batch_name/section_name/group_name): GROUP BY that dimension, ORDER
+        BY the present count ASC (lowest) or DESC (highest), LIMIT 1 unless
+        the question asks for the full ranking. Use a LEFT JOIN restricted
+        to the date so a dimension value with zero present students still
+        appears with count 0. ALWAYS also exclude a blank/NULL dimension
+        value from this ranking (add dimension_column IS NOT NULL AND
+        dimension_column <> '' to WHERE) - "(not set)" is never a real
+        answer to "which section/center/... has the lowest/highest
+        attendance", whether or not the question says so explicitly (e.g.
+        "other than not set" just restates what is already required):
+        SELECT sa.section_name, COUNT(DISTINCT CASE WHEN DATE(bi.punch_time)
+        = CURDATE() THEN sa.id END) AS present_count FROM student_admissions
+        sa LEFT JOIN biometric_info bi ON bi.punching_code = sa.punching_code
+        WHERE sa.punching_code IS NOT NULL AND sa.punching_code <> '' AND
+        sa.section_name IS NOT NULL AND sa.section_name <> '' GROUP BY
+        sa.section_name ORDER BY present_count ASC LIMIT 1.
+      - >
+        Late arrival: a student's first punch of a day is MIN(bi.punch_time)
+        grouped by student and date; "late" means that first punch's TIME()
+        is after the reporting cutoff - assume 09:30:00 unless the question
+        states a different time (e.g. "after 10am"). "How many trainees
+        arrived late today": SELECT COUNT(*) FROM (SELECT bi.punching_code,
+        MIN(bi.punch_time) AS first_punch FROM biometric_info bi WHERE
+        DATE(bi.punch_time) = CURDATE() GROUP BY bi.punching_code HAVING
+        TIME(MIN(bi.punch_time)) > '09:30:00') AS late_today.
+      - >
+        "Average late arrivals over a week": the average of the daily late
+        counts over the last 7 days (CURDATE() - INTERVAL 6 DAY through
+        today), each day computed with the same first-punch/cutoff rule as
+        above. SELECT AVG(daily_late_count) AS avg_late_per_day FROM (SELECT
+        DATE(first_punch) AS d, COUNT(*) AS daily_late_count FROM (SELECT
+        bi.punching_code, DATE(bi.punch_time) AS punch_date,
+        MIN(bi.punch_time) AS first_punch FROM biometric_info bi WHERE
+        bi.punch_time >= CURDATE() - INTERVAL 6 DAY GROUP BY bi.punching_code,
+        DATE(bi.punch_time)) AS daily_first_punch WHERE TIME(first_punch) >
+        '09:30:00' GROUP BY DATE(first_punch)) AS late_per_day.
+      - >
+        "Absent continuously for N days" (or "N days in a row", "consecutive
+        absent"): the student has ZERO biometric_info rows anywhere in the
+        last N calendar days up to and including today - it is not about a
+        gap inside a longer history, just no punch at all in that window.
+        N is whatever number the question names. SELECT sa.core_student_code,
+        sl.applicant_name FROM student_admissions sa JOIN student_leads sl ON
+        sl.id = sa.student_lead_id WHERE sa.punching_code IS NOT NULL AND
+        sa.punching_code <> '' AND NOT EXISTS (SELECT 1 FROM biometric_info
+        bi WHERE bi.punching_code = sa.punching_code AND bi.punch_time >=
+        CURDATE() - INTERVAL :n_minus_1 DAY). This does not know about
+        holidays/weekends the center may have been closed for - say so if
+        the count looks surprisingly high.
+      - >
+        A LIST of who is present/absent/late (not a count): select
+        sl.applicant_name (join lead_to_admission), sa.core_student_code,
+        sa.batch_name, sa.section_name, sa.center_name under their own
+        column names, plus the relevant attendance fact (bi.punch_time, the
+        computed first_punch, or the day count) - do NOT alias student
+        columns away from their real names. A COUNT/strength question uses
+        COUNT(DISTINCT sa.id) or COUNT(*) as shown above, not a row list.
+
+  event_schedule:
+    terms:
+      - event
+      - events
+      - placement event
+      - core event
+      - placement events
+      - core events
+      - campus drive
+      - drive
+      - drives
+      - interview session
+      - walk-in
+      - walkin
+      - upcoming event
+      - upcoming events
+      - next event
+      - next placement event
+      - scheduled
+    entities: [event]
+    tables: [core_events]
+    filter_tables: [core_events]
+    output_columns:
+      core_events:
+        - id
+        - event_name
+        - event_type
+        - company_name
+        - plant_name
+        - center_name
+        - event_date
+        - event_time
+        - selection_venue
+        - hiring_location
+        - position
+        - no_of_opening
+        - company_spoc
+    required_relationships: []
+    requires_identity: false
+    identity_optional_with_filters: false
+    sql_hints:
+      - >
+        For event schedules, select the event details (event_name, company_name,
+        event_type, event_date, event_time, selection_venue, hiring_location, position)
+        from core_events.
+      - >
+        When filtering by date: use `core_events.event_date` as the date column. If an exact date
+        or date range parameter is supplied, filter using `core_events.event_date = :event_date` or
+        `core_events.event_date BETWEEN :event_date_start AND :event_date_end`.
+      - >
+        When asked for 'upcoming' or 'next' events without a specific date parameter:
+        filter with `core_events.event_date >= CURDATE()` and order by
+        `core_events.event_date ASC, core_events.event_time ASC`.
+      - >
+        When asked for 'coming next' or 'the next event': filter with
+        `core_events.event_date >= CURDATE()`, order by `core_events.event_date ASC, core_events.event_time ASC`,
+        and `LIMIT 1`.
+      - >
+        Always order event listings chronologically: `ORDER BY core_events.event_date ASC, core_events.event_time ASC`.
